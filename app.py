@@ -1,104 +1,100 @@
 import psycopg2
 import csv
-
-conn = psycopg2.connect(
-    dbname="phonebook",
-    user="postgres",
-    password="1234",
-    host="localhost",
-    port="5432"
-)
-
-cur = conn.cursor()
-
-print("Connected to database!")
+import sys
 
 
+try:
+    conn = psycopg2.connect(
+        dbname="postgres", 
+        user="postgres",
+        password="password",
+        host="localhost",
+        port="5432"
+    )
+    cur = conn.cursor()
+    print("Connected to database!")
+except Exception as e:
+    print(f"Connection error: {e}")
+    sys.exit()
+
+
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS contacts (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        phone VARCHAR(20) UNIQUE NOT NULL
+    );
+""")
+conn.commit()
 
 def add_contact(name, phone):
     try:
         cur.execute(
-            "INSERT INTO contacts (name, phone) VALUES (%s, %s)",
+            "INSERT INTO contacts (name, phone) VALUES (%s, %s) "
+            "ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name", 
             (name, phone)
         )
         conn.commit()
-        print("Contact added!")
+        print(f"Contact {name} added/updated!")
     except Exception as e:
-        print("Error:", e)
+        print("Error adding contact:", e)
         conn.rollback()
 
+def load_from_csv(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                add_contact(row['name'], row['phone'])
+        print("CSV data loaded successfully!")
+    except FileNotFoundError:
+        print("CSV file not found.")
 
 def get_contacts():
-    cur.execute("SELECT * FROM contacts")
-    rows = cur.fetchall()
-    for row in rows:
-        print(row)
+    cur.execute("SELECT id, name, phone FROM contacts ORDER BY name")
+    for row in cur.fetchall():
+        print(f"ID: {row[0]} | Name: {row[1]} | Phone: {row[2]}")
 
-def update_phone(name, new_phone):
-    cur.execute(
-        "UPDATE contacts SET phone=%s WHERE name=%s",
-        (new_phone, name)
-    )
+def update_contact(name, new_phone):
+    cur.execute("UPDATE contacts SET phone=%s WHERE name=%s", (new_phone, name))
     conn.commit()
+    print("Contact updated!")
 
-def delete_contact(name):
-    cur.execute(
-        "DELETE FROM contacts WHERE name=%s",
-        (name,)
-    )
+def delete_contact(name_or_phone):
+ 
+    cur.execute("DELETE FROM contacts WHERE name=%s OR phone=%s", (name_or_phone, name_or_phone))
     conn.commit()
+    print("Contact deleted!")
 
-def search_by_name(name):
+def search_contacts(query):
+   
     cur.execute(
-        "SELECT * FROM contacts WHERE name ILIKE %s",
-        ('%' + name + '%',)
-        
+        "SELECT * FROM contacts WHERE name ILIKE %s OR phone LIKE %s",
+        ('%' + query + '%', query + '%')
     )
-    print(cur.fetchall())
+    results = cur.fetchall()
+    for r in results:
+        print(r)
 
-def search_by_prefix(prefix):
-    cur.execute(
-        "SELECT * FROM contacts WHERE phone LIKE %s",
-        (prefix + '%',)
-    )
-    print(cur.fetchall())
-
-
-
-def load_from_csv(file):
-    with open(file, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            add_contact(row['name'], row['phone'])
-
-            
 
 while True:
-    print("\n1.Add 2.Show 3.Search 4.Update 5.Delete 6.Exit")
-    choice = input("Choose: ")
+    print("\n--- PhoneBook (Practice 7) ---")
+    print("1.Add  2.Show All  3.Search  4.Update  5.Delete  6.Upload CSV  7.Exit")
+    choice = input("Choose action: ")
 
     if choice == "1":
-        name = input("Name: ")
-        phone = input("Phone: ")
-        add_contact(name, phone)
-
+        add_contact(input("Name: "), input("Phone: "))
     elif choice == "2":
         get_contacts()
-
     elif choice == "3":
-        name = input("Search name: ")
-        search_by_name(name)
-
+        search_contacts(input("Enter name or phone prefix: "))
     elif choice == "4":
-        name = input("Name: ")
-        phone = input("New phone: ")
-        update_phone(name, phone)
-
+        update_contact(input("Name to update: "), input("New phone: "))
     elif choice == "5":
-        name = input("Delete name: ")
-        delete_contact(name)
-
+        delete_contact(input("Enter name or phone to delete: "))
     elif choice == "6":
+        load_from_csv('contacts.csv')
+    elif choice == "7":
         break
 
 cur.close()
